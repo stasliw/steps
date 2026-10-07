@@ -1,0 +1,9 @@
+{
+  "name": "task-list",
+  "version": "0.1.0",
+  "description": "Right-side pane with a task list that Claude keeps up to date as it works",
+  "author": { "name": "stasliw" },
+  "license": "MIT",
+  "repository": "https://github.com/stasliw/task-list",
+  "types": "./types/index.d.ts"
+}
