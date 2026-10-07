@@ -1,15 +1,15 @@
 import type { Register, $ } from 'claude-code'
 
-import type { Task, TaskStatus } from '../types'
+import type { Step, StepStatus } from '../types'
 
-const PANE = 'task-list'
-const TOOL = 'mcp__task-list__set_tasks'
-const TASKS = { plugin: 'task-list', key: 'tasks' } as const
+const PANE = 'steps'
+const TOOL = 'mcp__steps__set_steps'
+const STEPS = { plugin: 'steps', key: 'steps' } as const
 
 // The directory's review follows $ only through $.noun.method calls and functions
 // in this file, so state goes through $.state, not the read/update helpers.
-async function readTasks($: $): Promise<Task[]> {
-  return (await $.state.get(TASKS)).value ?? []
+async function readSteps($: $): Promise<Step[]> {
+  return (await $.state.get(STEPS)).value ?? []
 }
 
 // The app can hold the pane open but undrawn or behind another tab, so ask it.
@@ -17,27 +17,27 @@ async function isOnScreen($: $): Promise<boolean> {
   return (await $.ui.panes()).some(p => p.id === PANE && p.isPlaced && p.isShown)
 }
 
-// Only /tasklist and the Tasks button open the pane. A pane that opens by itself gets in the way.
+// Only /steps and the Steps button open the pane. A pane that opens by itself gets in the way.
 // Returns whether the pane is shown afterwards.
 async function togglePane($: $): Promise<boolean> {
   if (await isOnScreen($)) {
     await $.ui.close({ id: PANE })
     return false
   }
-  await $.ui.open({ id: PANE, title: 'Tasks' })
+  await $.ui.open({ id: PANE, title: 'Steps' })
   return true
 }
 
-const STATUSES: readonly TaskStatus[] = ['todo', 'doing', 'done']
+const STATUSES: readonly StepStatus[] = ['todo', 'doing', 'done']
 
 // Claude sends the whole list on every call, so the pane always shows its latest view.
-function parseTasks(raw: unknown): Task[] | string {
-  if (!Array.isArray(raw)) return 'tasks must be an array'
-  const out: Task[] = []
+function parseSteps(raw: unknown): Step[] | string {
+  if (!Array.isArray(raw)) return 'steps must be an array'
+  const out: Step[] = []
   for (const item of raw) {
     const title = typeof item?.title === 'string' ? item.title.trim() : ''
     const status = item?.status
-    if (!title) return 'every task needs a non-empty title'
+    if (!title) return 'every step needs a non-empty title'
     if (!STATUSES.includes(status)) return `status must be one of ${STATUSES.join(', ')}`
     out.push({ title, status })
   }
@@ -45,19 +45,19 @@ function parseTasks(raw: unknown): Task[] | string {
 }
 
 const RULE = [
-  '# Task list pane',
-  `A task list pane beside this conversation shows your plan. Keep it current with the ${TOOL} tool.`,
+  '# Steps pane',
+  `A Steps pane beside this conversation shows your plan. Keep it current with the ${TOOL} tool.`,
   '- For any request with 2 or more steps, call it before the first step with the full plan.',
   '- Research and investigation count as multi-step work: list the questions or places you will look.',
-  '- Mark exactly one task "doing" while you work on it. Mark it "done" the moment it is finished,',
-  '  in the same message as the first tool call of the next task. Do not batch updates for later.',
-  '- Add, rename or drop tasks when the plan changes. Always send the whole list.',
+  '- Mark exactly one step "doing" while you work on it. Mark it "done" the moment it is finished,',
+  '  in the same message as the first tool call of the next step. Do not batch updates for later.',
+  '- Add, rename or drop steps when the plan changes. Always send the whole list.',
   '- Skip it only for a one-step answer.',
 ].join('\n')
 
 // The rule is read once, so mid-turn nothing reminded Claude and the pane fell
 // behind. Tool results now carry a short nudge the person never sees.
-const STALE_AFTER = 6 // tool calls since the last set_tasks, with tasks still open
+const STALE_AFTER = 6 // tool calls since the last set_steps, with steps still open
 const PLAN_AFTER = 4 // tool calls in a request that has no list yet
 
 // Module variables on purpose: a reload starts the count again, which is harmless.
@@ -65,21 +65,21 @@ let callsSinceUpdate = 0
 let hasListThisRequest = false
 let hasNudgedForPlan = false
 
-function nudgeFor(list: Task[]): string | undefined {
-  const open = list.filter(t => t.status !== 'done')
+function nudgeFor(list: Step[]): string | undefined {
+  const open = list.filter(s => s.status !== 'done')
   if (open.length > 0 && callsSinceUpdate >= STALE_AFTER) {
     callsSinceUpdate = 0
-    const doing = list.find(t => t.status === 'doing')
-    const now = doing ? `"${doing.title}" is still marked doing` : 'no task is marked doing'
+    const doing = list.find(s => s.status === 'doing')
+    const now = doing ? `"${doing.title}" is still marked doing` : 'no step is marked doing'
     return (
-      `Task list pane: ${STALE_AFTER} tool calls since your last ${TOOL} call, and ${now}. ` +
-      'If that task is finished or you moved on, call it now with the updated list.'
+      `Steps pane: ${STALE_AFTER} tool calls since your last ${TOOL} call, and ${now}. ` +
+      'If that step is finished or you moved on, call it now with the updated list.'
     )
   }
   if (!hasListThisRequest && !hasNudgedForPlan && open.length === 0 && callsSinceUpdate >= PLAN_AFTER) {
     hasNudgedForPlan = true
     return (
-      `Task list pane: ${callsSinceUpdate} tool calls on this request and no task list. ` +
+      `Steps pane: ${callsSinceUpdate} tool calls on this request and no list of steps. ` +
       `If this is more than one step (research counts), call ${TOOL} now with the plan.`
     )
   }
@@ -89,47 +89,46 @@ function nudgeFor(list: Task[]): string | undefined {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.tool.register({
-      name: 'set_tasks',
+      name: 'set_steps',
       description:
-        'Replace the task list shown to the user in the side pane. Send the full list every time, in order. ' +
+        'Replace the list of steps shown to the user in the side pane. Send the full list every time, in order. ' +
         'Use it to plan multi-step work and to mark progress as you go.',
       inputSchema: {
         type: 'object',
         properties: {
-          tasks: {
+          steps: {
             type: 'array',
             items: {
               type: 'object',
               properties: {
-                title: { type: 'string', description: 'Short task name, a few words' },
+                title: { type: 'string', description: 'Short step name, a few words' },
                 status: { type: 'string', enum: STATUSES },
               },
               required: ['title', 'status'],
             },
           },
         },
-        required: ['tasks'],
+        required: ['steps'],
       },
     })
-    // /tasklist, not /tasks: Claude Code has its own /tasks.
-    await $.command.register({ name: 'tasklist', description: 'Show or hide the task list pane' })
+    await $.command.register({ name: 'steps', description: 'Show or hide the Steps pane' })
 
     return next(e)
   })
 
-  on('command.run', { command: 'tasklist' }, async $ => {
+  on('command.run', { command: 'steps' }, async $ => {
     const shown = await togglePane($)
 
-    return { text: shown ? 'Task list pane shown.' : 'Task list pane hidden.' }
+    return { text: shown ? 'Steps pane shown.' : 'Steps pane hidden.' }
   })
 
-  // The Tasks button sits in the footer under the prompt, after the engine's own mode labels.
+  // The Steps button sits in the footer under the prompt, after the engine's own mode labels.
   // The desktop footer draws nothing for a Client (a plain-text control with a
   // hover-only fill), so both surfaces use a Button. Button has no padding prop,
   // so on the desktop non-breaking spaces widen its pill.
   on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
     const { Box, Button } = $.ui.resolve(e)
-    const label = e.surface === 'desktop' ? '  Tasks  ' : 'Tasks'
+    const label = e.surface === 'desktop' ? '  Steps  ' : 'Steps'
 
     return (
       <Box>
@@ -139,7 +138,7 @@ export const register: Register = on => {
     )
   })
 
-  // Plugin tools sit behind ToolSearch by default, and Claude never looked set_tasks up.
+  // Plugin tools sit behind ToolSearch by default, and Claude never looked set_steps up.
   // Keep its schema in the prompt so it is always callable.
   on('tool.describe', { tool: TOOL }, async ($, e, next) => ({ ...(await next(e)), isDeferred: false }))
 
@@ -148,7 +147,7 @@ export const register: Register = on => {
     const out = await next(e)
     if (e.traits.includes('bare')) return out
 
-    return { sections: [...out.sections, { id: 'task-list:rule', text: RULE, scope: 'session' as const }] }
+    return { sections: [...out.sections, { id: 'steps:rule', text: RULE, scope: 'session' as const }] }
   })
 
   // A new message from the person is a new request: its own plan, its own count.
@@ -165,44 +164,44 @@ export const register: Register = on => {
     const out = await next(e)
     if (out.deny !== undefined) return out
     callsSinceUpdate++
-    const nudge = nudgeFor(await readTasks($))
+    const nudge = nudgeFor(await readSteps($))
 
     return nudge ? { ...out, context: [...(out.context ?? []), nudge] } : out
   })
 
   on('tool.call', { tool: TOOL }, async ($, e) => {
-    const parsed = parseTasks((e as { tasks?: unknown }).tasks)
+    const parsed = parseSteps((e as { steps?: unknown }).steps)
     if (typeof parsed === 'string') return { deny: parsed }
     callsSinceUpdate = 0
     hasListThisRequest = true
-    await $.state.set(TASKS, parsed)
-    const done = parsed.filter(t => t.status === 'done').length
+    await $.state.set(STEPS, parsed)
+    const done = parsed.filter(s => s.status === 'done').length
 
-    return { result: `Task list updated: ${done}/${parsed.length} done.` }
+    return { result: `Steps updated: ${done}/${parsed.length} done.` }
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const list = await readTasks($)
-    const done = list.filter(t => t.status === 'done').length
+    const list = await readSteps($)
+    const done = list.filter(s => s.status === 'done').length
 
     // Desktop: icons carry the state, text stays in the theme's own color.
     if (e.surface === 'desktop') {
       const { Box, Text, Svg } = $.ui.resolve(e)
-      if (list.length === 0) return <Text dimColor>No tasks yet.</Text>
+      if (list.length === 0) return <Text dimColor>No steps yet.</Text>
 
       return (
         <Box flexDirection="column" gap={1}>
           <Box flexDirection="column" gap={1}>
-            {list.map(task => (
+            {list.map(step => (
               <Box flexDirection="row" alignItems="center" gap={1}>
-                <Svg source={ICONS[task.status]} alt={task.status} width={16} height={16} />
+                <Svg source={ICONS[step.status]} alt={step.status} width={16} height={16} />
                 <Text
-                  bold={task.status === 'doing'}
-                  dimColor={task.status === 'done'}
-                  strikethrough={task.status === 'done'}
+                  bold={step.status === 'doing'}
+                  dimColor={step.status === 'done'}
+                  strikethrough={step.status === 'done'}
                   wrap="wrap"
                 >
-                  {task.title}
+                  {step.title}
                 </Text>
               </Box>
             ))}
@@ -219,12 +218,12 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column">
-        {list.map(task => (
-          <Text bold={task.status === 'doing'} dimColor={task.status === 'done'} strikethrough={task.status === 'done'}>
-            {task.status === 'done' ? '✓' : task.status === 'doing' ? '›' : '○'} {task.title}
+        {list.map(step => (
+          <Text bold={step.status === 'doing'} dimColor={step.status === 'done'} strikethrough={step.status === 'done'}>
+            {step.status === 'done' ? '✓' : step.status === 'doing' ? '›' : '○'} {step.title}
           </Text>
         ))}
-        <Text dimColor>{list.length === 0 ? 'No tasks yet.' : `${done} of ${list.length} done`}</Text>
+        <Text dimColor>{list.length === 0 ? 'No steps yet.' : `${done} of ${list.length} done`}</Text>
       </Box>
     )
   })
@@ -249,7 +248,7 @@ const SPINNER = svg(
     '<path class="ink spin" d="M8 1.5A6.5 6.5 0 0 1 14.5 8" style="fill:none" stroke-width="1.5" stroke-linecap="round"/>',
 )
 
-const ICONS: Record<TaskStatus, string> = {
+const ICONS: Record<StepStatus, string> = {
   todo: svg('0 0 16 16', '<circle class="gray" cx="8" cy="8" r="6.5" style="fill:none" stroke-width="1.5"/>'),
   doing: SPINNER,
   done: svg(

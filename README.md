@@ -1,13 +1,13 @@
-# task-list
+# Steps
 
-A Claude Code mod that shows Claude's plan in a pane beside the conversation. Claude writes the plan when it starts a task with two or more steps. It marks one task as doing while it works, and marks each task done when it finishes. You can see what Claude is doing and what is left, without reading the whole transcript.
+A Claude Code mod that shows Claude's plan in a pane beside the conversation. Claude writes the steps when it starts work that has two or more of them. It marks one step as doing while it works, and marks each step done when it finishes. You can see what Claude is doing and what is left, without reading the whole transcript.
 
 Works in the Claude Code terminal and in the Code tab of the Claude desktop app.
 
 ## Use it
 
-- Type `/tasklist` to show or hide the pane.
-- Or press the Tasks button in the footer, under the prompt.
+- Type `/steps` to show or hide the pane.
+- Or press the Steps button in the footer, under the prompt.
 
 The pane never opens by itself. Claude keeps the list current while the pane is hidden, so it is ready when you open it.
 
@@ -15,15 +15,15 @@ The pane never opens by itself. Claude keeps the list current while the pane is 
 
 All hooks are in `hooks/register.tsx`.
 
-- `session.start` registers the `set_tasks` tool and the `/tasklist` command, then passes the event on unchanged.
-- `tool.call` for `mcp__task-list__set_tasks` answers the mod's own `set_tasks` tool. That is the tool's only implementation. It checks the list, saves it in the plugin's state and returns a one-line count. It answers no other tool.
-- `tool.call` for every other tool runs the tool unchanged and returns its result unchanged. It only counts the call. When Claude makes 6 tool calls without an update while tasks are still open, it adds one short note to the result that only Claude reads. It also adds one note per request when Claude makes 4 tool calls with no list. Tool calls by subagents do not count. It never blocks a call.
-- `command.run` for `tasklist` answers the mod's own `/tasklist` command. It shows or hides the pane and prints one line. It runs for no other command.
-- `tool.describe` for `mcp__task-list__set_tasks` sets `isDeferred` to false, so the tool's schema stays in the prompt and Claude does not have to look it up first. It changes nothing else, and no other tool.
-- `prompt.compose` adds one section to the system prompt, `task-list:rule`. The rule tells Claude when to make a list and how to keep it current. It keeps every other section as it is, and adds nothing to a bare session.
+- `session.start` registers the `set_steps` tool and the `/steps` command, then passes the event on unchanged.
+- `tool.call` for `mcp__steps__set_steps` answers the mod's own `set_steps` tool. That is the tool's only implementation. It checks the list, saves it in the plugin's state and returns a one-line count. It answers no other tool.
+- `tool.call` for every other tool runs the tool unchanged and returns its result unchanged. It only counts the call. When Claude makes 6 tool calls without an update while steps are still open, it adds one short note to the result that only Claude reads. It also adds one note per request when Claude makes 4 tool calls with no list. Tool calls by subagents do not count. It never blocks a call.
+- `command.run` for `steps` answers the mod's own `/steps` command. It shows or hides the pane and prints one line. It runs for no other command.
+- `tool.describe` for `mcp__steps__set_steps` sets `isDeferred` to false, so the tool's schema stays in the prompt and Claude does not have to look it up first. It changes nothing else, and no other tool.
+- `prompt.compose` adds one section to the system prompt, `steps:rule`. The rule tells Claude when to make a list and how to keep it current. It keeps every other section as it is, and adds nothing to a bare session.
 - `prompt.submit` starts the counts again for each new message. It passes the message on unchanged.
-- `ui.render` for `SessionMode` adds the Tasks button after the footer's own labels.
-- `ui.render` for the `task-list` pane draws the list.
+- `ui.render` for `SessionMode` adds the Steps button after the footer's own labels.
+- `ui.render` for the `steps` pane draws the list.
 
 ## What it does not do
 

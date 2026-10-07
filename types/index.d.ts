@@ -1,8 +1,8 @@
-export type TaskStatus = 'todo' | 'doing' | 'done'
-export type Task = { title: string; status: TaskStatus }
+export type StepStatus = 'todo' | 'doing' | 'done'
+export type Step = { title: string; status: StepStatus }
 
 declare module 'claude-code' {
   interface PluginState {
-    'task-list': { tasks: Task[] }
+    steps: { steps: Step[] }
   }
 }

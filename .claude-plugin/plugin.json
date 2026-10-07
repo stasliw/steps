@@ -1,9 +1,10 @@
 {
-  "name": "task-list",
+  "name": "steps",
+  "displayName": "Steps",
   "version": "0.1.0",
-  "description": "Right-side pane with a task list that Claude keeps up to date as it works",
+  "description": "A pane beside the conversation that shows the steps Claude plans and keeps them current as it works",
   "author": { "name": "stasliw" },
   "license": "MIT",
-  "repository": "https://github.com/stasliw/task-list",
+  "repository": "https://github.com/stasliw/steps",
   "types": "./types/index.d.ts"
 }

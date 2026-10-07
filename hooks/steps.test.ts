@@ -1,17 +1,17 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-const TOOL = 'mcp__task-list__set_tasks'
+const TOOL = 'mcp__steps__set_steps'
 
 // A deferred tool hides its schema behind ToolSearch, and Claude in a new
-// session never looked it up. The mod must keep set_tasks in the prompt.
-test('set_tasks is listed in the prompt, not behind ToolSearch', async ($, on) => {
+// session never looked it up. The mod must keep set_steps in the prompt.
+test('set_steps is listed in the prompt, not behind ToolSearch', async ($, on) => {
   on('tool.describe', { tool: TOOL }, (_$, e) => ({ description: e.description, isDeferred: true }))
 
   const out = await $.tool.describe({
     tool: TOOL,
-    description: 'Replace the task list',
+    description: 'Replace the list of steps',
     isDeferred: true,
-    provider: { plugin: 'task-list', tier: 'user' },
+    provider: { plugin: 'steps', tier: 'user' },
   })
 
   expect(out.isDeferred).toBe(false)
@@ -33,36 +33,35 @@ test('the rule is a system prompt section, not per-prompt context', async ($, on
   })
   const submitted = await $.prompt.submit({ text: 'hi' })
 
-  expect(composed.sections.find(s => s.id === 'task-list:rule')?.scope).toBe('session')
+  expect(composed.sections.find(s => s.id === 'steps:rule')?.scope).toBe('session')
   expect(submitted.context ?? []).toEqual([])
 })
 
-// /tasklist opens and closes the pane, as does the Tasks button in the footer.
-// The name is /tasklist, not /tasks: Claude Code has its own /tasks.
-test('/tasklist opens and closes the pane', async ($, on) => {
+// /steps opens and closes the pane, as does the Steps button in the footer.
+test('/steps opens and closes the pane', async ($, on) => {
   const seen: string[] = []
   let isOpen = false
   on('ui.panes', () => ({ value: isOpen ? [pane(true)] : [] }))
-  on('ui.open', { id: 'task-list' }, () => {
+  on('ui.open', { id: 'steps' }, () => {
     seen.push('open')
     isOpen = true
     return { value: { isPlaced: true as const } }
   })
-  on('ui.close', { id: 'task-list' }, () => {
+  on('ui.close', { id: 'steps' }, () => {
     seen.push('close')
     isOpen = false
     return { value: undefined }
   })
 
-  const first = await $.command.run({ command: 'tasklist', args: '' })
-  const second = await $.command.run({ command: 'tasklist', args: '' })
+  const first = await $.command.run({ command: 'steps', args: '' })
+  const second = await $.command.run({ command: 'steps', args: '' })
 
   expect(seen).toEqual(['open', 'close'])
-  expect([first.text, second.text]).toEqual(['Task list pane shown.', 'Task list pane hidden.'])
+  expect([first.text, second.text]).toEqual(['Steps pane shown.', 'Steps pane hidden.'])
 })
 
-// A pane that opens by itself gets in the way. Only /tasklist and the Tasks button open it.
-test('the pane never opens by itself, at session start or on set_tasks', async ($, on) => {
+// A pane that opens by itself gets in the way. Only /steps and the Steps button open it.
+test('the pane never opens by itself, at session start or on set_steps', async ($, on) => {
   const seen: string[] = []
   const commands: string[] = []
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
@@ -72,35 +71,35 @@ test('the pane never opens by itself, at session start or on set_tasks', async (
     return { value: { command: e.name } }
   })
   on('ui.panes', () => ({ value: [] }))
-  on('ui.open', { id: 'task-list' }, () => {
+  on('ui.open', { id: 'steps' }, () => {
     seen.push('open')
     return { value: { isPlaced: true as const } }
   })
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  await $.tool.call({ tool: TOOL, tasks: [{ title: 'Plan it', status: 'doing' }] })
+  await $.tool.call({ tool: TOOL, steps:[{ title: 'Plan it', status: 'doing' }] })
 
   expect(seen).toEqual([])
-  expect(commands).toEqual(['tasklist'])
+  expect(commands).toEqual(['steps'])
 })
 
 for (const surface of ['terminal', 'desktop'] as const) {
-  test(`the pane draws every task (${surface})`, async ($, on) => {
-    on('ui.open', { id: 'task-list' }, () => ({ value: { isPlaced: true as const } }))
+  test(`the pane draws every step (${surface})`, async ($, on) => {
+    on('ui.open', { id: 'steps' }, () => ({ value: { isPlaced: true as const } }))
     await $.tool.call({
       tool: TOOL,
-      tasks: [
+      steps:[
         { title: 'Plan it', status: 'done' },
         { title: 'Build it', status: 'doing' },
         { title: 'Ship it', status: 'todo' },
       ],
     })
     const ui = await $.ui.mount({
-      plugin: 'task-list',
+      plugin: 'steps',
       surface,
       component: 'Pane',
-      requestId: 'task-list',
-      props: { title: 'Tasks', isFocused: false, bodyColumns: 40, placement: 'dock', scroll: { offset: 0, bodyRows: 20 } },
+      requestId: 'steps',
+      props: { title: 'Steps', isFocused: false, bodyColumns: 40, placement: 'dock', scroll: { offset: 0, bodyRows: 20 } },
     })
 
     expect(await ui.find({ text: '1 of 3 done' })).toBeDefined()
@@ -109,19 +108,19 @@ for (const surface of ['terminal', 'desktop'] as const) {
 
 }
 
-// A "Tasks" button sits in the footer, beside the mode labels.
+// A "Steps" button sits in the footer, beside the mode labels.
 // Stands in for the engine's own labels and records each open and close.
 function footer(on: Parameters<Parameters<typeof test>[1]>[1]) {
   on('ui.render', { component: 'SessionMode' }, () => h('Text', null, 'focus') as never)
   const seen: string[] = []
   let isOpen = false
   on('ui.panes', () => ({ value: isOpen ? [pane(true)] : [] }))
-  on('ui.open', { id: 'task-list' }, () => {
+  on('ui.open', { id: 'steps' }, () => {
     seen.push('open')
     isOpen = true
     return { value: { isPlaced: true as const } }
   })
-  on('ui.close', { id: 'task-list' }, () => {
+  on('ui.close', { id: 'steps' }, () => {
     seen.push('close')
     isOpen = false
     return { value: undefined }
@@ -130,14 +129,14 @@ function footer(on: Parameters<Parameters<typeof test>[1]>[1]) {
 }
 
 function mountFooter($: Parameters<Parameters<typeof test>[1]>[0], surface: 'terminal' | 'desktop') {
-  return $.ui.mount({ plugin: 'task-list', surface, component: 'SessionMode', props: { modes: [] } })
+  return $.ui.mount({ plugin: 'steps', surface, component: 'SessionMode', props: { modes: [] } })
 }
 
-test('the Tasks button opens and closes the pane (terminal)', async ($, on) => {
+test('the Steps button opens and closes the pane (terminal)', async ($, on) => {
   const seen = footer(on)
   const ui = await mountFooter($, 'terminal')
 
-  expect((await ui.find({ key: 'toggle' }))?.text).toBe('Tasks')
+  expect((await ui.find({ key: 'toggle' }))?.text).toBe('Steps')
   expect(await ui.find({ text: 'focus' })).toBeDefined()
   await ui.press({ key: 'toggle' })
   await ui.press({ key: 'toggle' })
@@ -148,12 +147,12 @@ test('the Tasks button opens and closes the pane (terminal)', async ($, on) => {
 // The desktop footer draws nothing for a Client (a plain-text control with a
 // hover-only fill), so the desktop keeps a Button. Button has no padding prop,
 // so non-breaking spaces widen its pill.
-test('the Tasks button opens and closes the pane (desktop)', async ($, on) => {
+test('the Steps button opens and closes the pane (desktop)', async ($, on) => {
   const seen = footer(on)
   const ui = await mountFooter($, 'desktop')
 
   expect(await ui.find({ type: 'Client' })).toBeUndefined()
-  expect((await ui.find({ key: 'toggle' }))?.text).toBe('  Tasks  ')
+  expect((await ui.find({ key: 'toggle' }))?.text).toBe('  Steps  ')
   expect(await ui.find({ text: 'focus' })).toBeDefined()
   await ui.press({ key: 'toggle' })
   await ui.press({ key: 'toggle' })
@@ -162,7 +161,7 @@ test('the Tasks button opens and closes the pane (desktop)', async ($, on) => {
 })
 
 function pane(isOnScreen: boolean) {
-  return { id: 'task-list', title: 'Tasks', isShown: isOnScreen, isFocused: false, isPlaced: isOnScreen }
+  return { id: 'steps', title: 'Steps', isShown: isOnScreen, isFocused: false, isPlaced: isOnScreen }
 }
 
 // The rule sits in the system prompt, read once. Mid-turn nothing reminded Claude,
@@ -172,7 +171,7 @@ const WORK = 'mcp__fake__search'
 function answerWork(on: Parameters<Parameters<typeof test>[1]>[1]) {
   on('tool.call', { tool: WORK }, () => ({ result: 'ok' }))
   on('prompt.submit', (_$, e) => ({ text: e.text, context: e.context }))
-  on('ui.open', { id: 'task-list' }, () => ({ value: { isPlaced: true as const } }))
+  on('ui.open', { id: 'steps' }, () => ({ value: { isPlaced: true as const } }))
 }
 
 async function work($: Parameters<Parameters<typeof test>[1]>[0], times: number, agentId?: string) {
@@ -184,10 +183,10 @@ async function work($: Parameters<Parameters<typeof test>[1]>[0], times: number,
   return out
 }
 
-test('a list left untouched for 6 tool calls gets a nudge that names the doing task', async ($, on) => {
+test('a list left untouched for 6 tool calls gets a nudge that names the doing step', async ($, on) => {
   answerWork(on)
   await $.prompt.submit({ text: 'fix it' })
-  await $.tool.call({ tool: TOOL, tasks: [{ title: 'Open the issue', status: 'doing' }, { title: 'Run tests', status: 'todo' }] })
+  await $.tool.call({ tool: TOOL, steps:[{ title: 'Open the issue', status: 'doing' }, { title: 'Run tests', status: 'todo' }] })
 
   const seen = await work($, 6)
 
@@ -195,13 +194,13 @@ test('a list left untouched for 6 tool calls gets a nudge that names the doing t
   expect(seen[5].join('\n')).toContain('Open the issue')
 })
 
-test('a set_tasks call starts the count again', async ($, on) => {
+test('a set_steps call starts the count again', async ($, on) => {
   answerWork(on)
   await $.prompt.submit({ text: 'fix it' })
   const list = [{ title: 'Open the issue', status: 'doing' }]
-  await $.tool.call({ tool: TOOL, tasks: list })
+  await $.tool.call({ tool: TOOL, steps:list })
   const first = await work($, 5)
-  await $.tool.call({ tool: TOOL, tasks: list })
+  await $.tool.call({ tool: TOOL, steps:list })
   const second = await work($, 5)
 
   expect([...first, ...second].every(c => c.length === 0)).toBe(true)
@@ -221,7 +220,7 @@ test('research with no list gets one nudge to make a plan', async ($, on) => {
 test("a subagent's tool calls do not count", async ($, on) => {
   answerWork(on)
   await $.prompt.submit({ text: 'fix it' })
-  await $.tool.call({ tool: TOOL, tasks: [{ title: 'Open the issue', status: 'doing' }] })
+  await $.tool.call({ tool: TOOL, steps:[{ title: 'Open the issue', status: 'doing' }] })
 
   const seen = await work($, 10, 'agent-1')
 
@@ -239,7 +238,7 @@ test('the rule says research and investigation count as multi-step work', async 
     traits: [],
   })
 
-  expect(composed.sections.find(s => s.id === 'task-list:rule')?.text).toMatch(/research/i)
+  expect(composed.sections.find(s => s.id === 'steps:rule')?.text).toMatch(/research/i)
 })
 
 function doingIcon(tree: unknown): { source?: string; isInteractive?: boolean } | undefined {
@@ -257,8 +256,8 @@ function doingIcon(tree: unknown): { source?: string; isInteractive?: boolean } 
 // CSS animation inside the SVG turns it, with no redraws.
 test('the doing icon is a plain image that turns by CSS, not a sandboxed frame', async ($, on) => {
   const clock = mock.clock(on)
-  on('ui.open', { id: 'task-list' }, () => ({ value: { isPlaced: true as const } }))
-  await $.tool.call({ tool: TOOL, tasks: [{ title: 'Build it', status: 'doing' }] })
+  on('ui.open', { id: 'steps' }, () => ({ value: { isPlaced: true as const } }))
+  await $.tool.call({ tool: TOOL, steps:[{ title: 'Build it', status: 'doing' }] })
   const ui = await mountDesktopPane($)
   const before = doingIcon(await ui.drawn())
 
@@ -272,8 +271,8 @@ test('the doing icon is a plain image that turns by CSS, not a sandboxed frame',
 
 // A plain turning circle, not the 12-spoke macOS spinner.
 test('the doing icon is a turning circle, not spokes', async ($, on) => {
-  on('ui.open', { id: 'task-list' }, () => ({ value: { isPlaced: true as const } }))
-  await $.tool.call({ tool: TOOL, tasks: [{ title: 'Build it', status: 'doing' }] })
+  on('ui.open', { id: 'steps' }, () => ({ value: { isPlaced: true as const } }))
+  await $.tool.call({ tool: TOOL, steps:[{ title: 'Build it', status: 'doing' }] })
   const ui = await mountDesktopPane($)
 
   const source = doingIcon(await ui.drawn())?.source ?? ''
@@ -284,10 +283,10 @@ test('the doing icon is a turning circle, not spokes', async ($, on) => {
 
 function mountDesktopPane($: Parameters<Parameters<typeof test>[1]>[0]) {
   return $.ui.mount({
-    plugin: 'task-list',
+    plugin: 'steps',
     surface: 'desktop',
     component: 'Pane',
-    requestId: 'task-list',
-    props: { title: 'Tasks', isFocused: false, bodyColumns: 40, placement: 'dock', scroll: { offset: 0, bodyRows: 20 } },
+    requestId: 'steps',
+    props: { title: 'Steps', isFocused: false, bodyColumns: 40, placement: 'dock', scroll: { offset: 0, bodyRows: 20 } },
   })
 }
