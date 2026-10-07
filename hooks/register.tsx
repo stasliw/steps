@@ -1,31 +1,16 @@
-import type { Register, $ } from 'claude-code'
+import type { Register, UiPane } from 'claude-code'
 
 import type { Step, StepStatus } from '../types'
 
+// The directory reads any name $ in this file as the engine, and follows it only as a
+// hook's first parameter in plain $.noun.method(...) calls. So no helper takes $ and
+// no type is named $: each hook makes its own calls.
 const PANE = 'steps'
 const TOOL = 'mcp__steps__set_steps'
-const STEPS = { plugin: 'steps', key: 'steps' } as const
-
-// The directory's review follows $ only through $.noun.method calls and functions
-// in this file, so state goes through $.state, not the read/update helpers.
-async function readSteps($: $): Promise<Step[]> {
-  return (await $.state.get(STEPS)).value ?? []
-}
 
 // The app can hold the pane open but undrawn or behind another tab, so ask it.
-async function isOnScreen($: $): Promise<boolean> {
-  return (await $.ui.panes()).some(p => p.id === PANE && p.isPlaced && p.isShown)
-}
-
-// Only /steps and the Steps button open the pane. A pane that opens by itself gets in the way.
-// Returns whether the pane is shown afterwards.
-async function togglePane($: $): Promise<boolean> {
-  if (await isOnScreen($)) {
-    await $.ui.close({ id: PANE })
-    return false
-  }
-  await $.ui.open({ id: PANE, title: 'Steps' })
-  return true
+function isOnScreen(panes: readonly UiPane[]): boolean {
+  return panes.some(p => p.id === PANE && p.isPlaced && p.isShown)
 }
 
 const STATUSES: readonly StepStatus[] = ['todo', 'doing', 'done']
@@ -60,7 +45,9 @@ const RULE = [
 const STALE_AFTER = 6 // tool calls since the last set_steps, with steps still open
 const PLAN_AFTER = 4 // tool calls in a request that has no list yet
 
-// Module variables on purpose: a reload starts the count again, which is harmless.
+// Module variables on purpose: a reload starts the list and the count again, which is harmless.
+// Keeping the list here, not in $.state, means the mod declares no state contract.
+let steps: Step[] = []
 let callsSinceUpdate = 0
 let hasListThisRequest = false
 let hasNudgedForPlan = false
@@ -116,10 +103,16 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // Only /steps and the Steps button open the pane. A pane that opens by itself gets in the way.
   on('command.run', { command: 'steps' }, async $ => {
-    const shown = await togglePane($)
+    const panes = await $.ui.panes()
+    if (isOnScreen(panes)) {
+      await $.ui.close({ id: PANE })
+      return { text: 'Steps pane hidden.' }
+    }
+    await $.ui.open({ id: PANE, title: 'Steps' })
 
-    return { text: shown ? 'Steps pane shown.' : 'Steps pane hidden.' }
+    return { text: 'Steps pane shown.' }
   })
 
   // The Steps button sits in the footer under the prompt, after the engine's own mode labels.
@@ -129,18 +122,23 @@ export const register: Register = on => {
   on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
     const { Box, Button } = $.ui.resolve(e)
     const label = e.surface === 'desktop' ? '  Steps  ' : 'Steps'
+    const toggle = async () => {
+      const panes = await $.ui.panes()
+      if (isOnScreen(panes)) await $.ui.close({ id: PANE })
+      else await $.ui.open({ id: PANE, title: 'Steps' })
+    }
 
     return (
       <Box>
         {await next(e)}
-        <Button key="toggle" plain label={label} onPress={() => togglePane($)} />
+        <Button key="toggle" plain label={label} onPress={toggle} />
       </Box>
     )
   })
 
   // Plugin tools sit behind ToolSearch by default, and Claude never looked set_steps up.
   // Keep its schema in the prompt so it is always callable.
-  on('tool.describe', { tool: TOOL }, async ($, e, next) => ({ ...(await next(e)), isDeferred: false }))
+  on('tool.describe', { tool: 'mcp__steps__set_steps' }, async ($, e, next) => ({ ...(await next(e)), isDeferred: false }))
 
   // The rule is a system prompt section: read once per session and cached, not repeated per message.
   on('prompt.compose', async ($, e, next) => {
@@ -164,24 +162,26 @@ export const register: Register = on => {
     const out = await next(e)
     if (out.deny !== undefined) return out
     callsSinceUpdate++
-    const nudge = nudgeFor(await readSteps($))
+    const nudge = nudgeFor(steps)
 
     return nudge ? { ...out, context: [...(out.context ?? []), nudge] } : out
   })
 
-  on('tool.call', { tool: TOOL }, async ($, e) => {
+  // The only way a mod serves a tool it registered: this hook is set_steps's whole implementation.
+  on('tool.call', { tool: 'mcp__steps__set_steps' }, async ($, e) => {
     const parsed = parseSteps((e as { steps?: unknown }).steps)
     if (typeof parsed === 'string') return { deny: parsed }
     callsSinceUpdate = 0
     hasListThisRequest = true
-    await $.state.set(STEPS, parsed)
+    steps = parsed
+    $.ui.invalidate('ui.render')
     const done = parsed.filter(s => s.status === 'done').length
 
     return { result: `Steps updated: ${done}/${parsed.length} done.` }
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const list = await readSteps($)
+    const list = steps
     const done = list.filter(s => s.status === 'done').length
 
     // Desktop: icons carry the state, text stays in the theme's own color.

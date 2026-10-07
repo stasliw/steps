@@ -108,6 +108,18 @@ for (const surface of ['terminal', 'desktop'] as const) {
 
 }
 
+// An open pane follows Claude: each set_steps call draws it again with the new list.
+test('an open pane redraws when the steps change', async ($, on) => {
+  on('ui.open', { id: 'steps' }, () => ({ value: { isPlaced: true as const } }))
+  await $.tool.call({ tool: TOOL, steps: [{ title: 'Plan it', status: 'doing' }] })
+  const ui = await mountDesktopPane($)
+
+  await $.tool.call({ tool: TOOL, steps: [{ title: 'Plan it', status: 'done' }, { title: 'Build it', status: 'doing' }] })
+
+  expect(await ui.find({ text: 'Build it' })).toBeDefined()
+  expect(await ui.find({ text: '1 of 2 done' })).toBeDefined()
+})
+
 // A "Steps" button sits in the footer, beside the mode labels.
 // Stands in for the engine's own labels and records each open and close.
 function footer(on: Parameters<Parameters<typeof test>[1]>[1]) {
