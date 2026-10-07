@@ -11,16 +11,23 @@ Works in the Claude Code terminal and in the Code tab of the Claude desktop app.
 
 The pane never opens by itself. Claude keeps the list current while the pane is hidden, so it is ready when you open it.
 
-## What it adds to Claude Code
+## What each hook does
 
-- A tool, `set_tasks`. Claude sends the full list on each call. The tool stays in the prompt, so Claude does not have to look it up first.
-- A short rule in the system prompt. It tells Claude when to make a list and how to keep it current.
-- A short note in a tool result that only Claude reads. It comes when Claude makes 6 tool calls without an update while tasks are still open. It also comes once per request when Claude makes 4 tool calls with no list. Tool calls by subagents do not count.
-- The `/tasklist` command, the Tasks button and the pane.
+All hooks are in `hooks/register.tsx`.
+
+- `session.start` registers the `set_tasks` tool and the `/tasklist` command, then passes the event on unchanged.
+- `tool.call` for `mcp__task-list__set_tasks` answers the mod's own `set_tasks` tool. That is the tool's only implementation. It checks the list, saves it in the plugin's state and returns a one-line count. It answers no other tool.
+- `tool.call` for every other tool runs the tool unchanged and returns its result unchanged. It only counts the call. When Claude makes 6 tool calls without an update while tasks are still open, it adds one short note to the result that only Claude reads. It also adds one note per request when Claude makes 4 tool calls with no list. Tool calls by subagents do not count. It never blocks a call.
+- `command.run` for `tasklist` answers the mod's own `/tasklist` command. It shows or hides the pane and prints one line. It runs for no other command.
+- `tool.describe` for `mcp__task-list__set_tasks` sets `isDeferred` to false, so the tool's schema stays in the prompt and Claude does not have to look it up first. It changes nothing else, and no other tool.
+- `prompt.compose` adds one section to the system prompt, `task-list:rule`. The rule tells Claude when to make a list and how to keep it current. It keeps every other section as it is, and adds nothing to a bare session.
+- `prompt.submit` starts the counts again for each new message. It passes the message on unchanged.
+- `ui.render` for `SessionMode` adds the Tasks button after the footer's own labels.
+- `ui.render` for the `task-list` pane draws the list.
 
 ## What it does not do
 
-It makes no network calls, writes no files and sends nothing outside Claude Code. The list stays in Claude Code's own plugin state.
+It makes no permission decisions. It makes no network calls, reads and writes no files, and sends nothing outside Claude Code. The list stays in Claude Code's own plugin state.
 
 ## Tests
 

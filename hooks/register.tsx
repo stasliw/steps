@@ -1,11 +1,16 @@
-import { atom, read, update } from 'claude-code'
 import type { Register, $ } from 'claude-code'
 
 import type { Task, TaskStatus } from '../types'
 
 const PANE = 'task-list'
 const TOOL = 'mcp__task-list__set_tasks'
-const tasks = atom({ plugin: 'task-list', key: 'tasks' } as const, [])
+const TASKS = { plugin: 'task-list', key: 'tasks' } as const
+
+// The directory's review follows $ only through $.noun.method calls and functions
+// in this file, so state goes through $.state, not the read/update helpers.
+async function readTasks($: $): Promise<Task[]> {
+  return (await $.state.get(TASKS)).value ?? []
+}
 
 // The app can hold the pane open but undrawn or behind another tab, so ask it.
 async function isOnScreen($: $): Promise<boolean> {
@@ -160,7 +165,7 @@ export const register: Register = on => {
     const out = await next(e)
     if (out.deny !== undefined) return out
     callsSinceUpdate++
-    const nudge = nudgeFor(await read($, tasks))
+    const nudge = nudgeFor(await readTasks($))
 
     return nudge ? { ...out, context: [...(out.context ?? []), nudge] } : out
   })
@@ -170,14 +175,14 @@ export const register: Register = on => {
     if (typeof parsed === 'string') return { deny: parsed }
     callsSinceUpdate = 0
     hasListThisRequest = true
-    await update($, tasks, () => parsed)
+    await $.state.set(TASKS, parsed)
     const done = parsed.filter(t => t.status === 'done').length
 
     return { result: `Task list updated: ${done}/${parsed.length} done.` }
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const list = await read($, tasks)
+    const list = await readTasks($)
     const done = list.filter(t => t.status === 'done').length
 
     // Desktop: icons carry the state, text stays in the theme's own color.
