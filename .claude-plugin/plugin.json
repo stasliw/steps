@@ -5,5 +5,9 @@
   "description": "A pane beside the conversation that shows the steps Claude plans and keeps them current as it works",
   "author": { "name": "stasliw" },
   "license": "MIT",
-  "repository": "https://github.com/stasliw/steps"
+  "repository": "https://github.com/stasliw/steps",
+  "homepage": "https://github.com/stasliw/steps#readme",
+  "documentationUrl": "https://github.com/stasliw/steps#readme",
+  "supportUrl": "https://github.com/stasliw/steps/issues",
+  "privacyPolicyUrl": "https://github.com/stasliw/steps/blob/main/PRIVACY.md"
 }
