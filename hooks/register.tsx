@@ -54,8 +54,41 @@ let hasNudgedForPlan = false
 // The goal from /goal or Claude's ProposeGoal, shown above the list.
 let goal: string | undefined
 
-function goalText(text: string): string {
-  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`
+const GOAL_LINES = 3
+
+// A long goal pushed the steps out of view, so it stops after GOAL_LINES lines.
+// Text has no line limit, only a one-line cut, so this wraps by words at the
+// pane's width the way the surface will, keeps those lines and ends the last
+// with an ellipsis. Exact in the terminal; close on the desktop's wider font.
+function goalText(text: string, columns: number): string {
+  const full = `${text.charAt(0).toUpperCase()}${text.slice(1)}`
+  if (columns < 2) return full
+  // glue is what joins a line to the one before: a space, or nothing inside a split word.
+  const lines: { text: string; glue: string }[] = []
+  let cur: { text: string; glue: string } | undefined
+  for (const word of full.split(/\s+/).filter(Boolean)) {
+    if (cur && cur.text.length + 1 + word.length <= columns) {
+      cur.text += ` ${word}`
+      continue
+    }
+    if (cur) lines.push(cur)
+    let rest = word
+    let glue = ' '
+    while (rest.length > columns) {
+      lines.push({ text: rest.slice(0, columns), glue })
+      rest = rest.slice(columns)
+      glue = ''
+    }
+    cur = { text: rest, glue }
+  }
+  if (cur) lines.push(cur)
+  if (lines.length <= GOAL_LINES) return full
+
+  const kept = lines.slice(0, GOAL_LINES)
+  const last = kept[GOAL_LINES - 1]
+  if (last && last.text.length >= columns) last.text = last.text.slice(0, columns - 1)
+
+  return `${kept.map((l, i) => (i === 0 ? l.text : l.glue + l.text)).join('')}…`
 }
 
 function nudgeFor(list: Step[]): string | undefined {
@@ -225,7 +258,7 @@ export const register: Register = on => {
             <Svg source={GOAL_ICON} alt="goal" width={16} height={16} />
             <Text bold>Goal</Text>
           </Box>
-          <Text wrap="wrap">{goalText(goal)}</Text>
+          <Text wrap="wrap">{goalText(goal, e.props.bodyColumns)}</Text>
         </Box>
       ) : null
       if (list.length === 0) {
@@ -272,7 +305,7 @@ export const register: Register = on => {
     return (
       <Box flexDirection="column">
         {goal ? <Text bold>{`${GOAL_MARK} Goal`}</Text> : null}
-        {goal ? <Text>{goalText(goal)}</Text> : null}
+        {goal ? <Text>{goalText(goal, e.props.bodyColumns)}</Text> : null}
         {list.map(step => (
           <Text bold={step.status === 'doing'} dimColor={step.status === 'done'} strikethrough={step.status === 'done'}>
             {step.status === 'done' ? '✓' : step.status === 'doing' ? '›' : '○'} {step.title}

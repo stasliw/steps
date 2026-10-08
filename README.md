@@ -11,7 +11,7 @@ Works in the Claude Code terminal and in the Code tab of the Claude desktop app.
 
 The pane never opens by itself. Claude keeps the list current while the pane is hidden, so it is ready when you open it.
 
-When you set a goal with `/goal`, the pane shows it above the list: "Goal" in bold beside a target, then the goal in regular text. `/goal clear` removes it. A goal that Claude proposes and you accept shows the same way.
+When you set a goal with `/goal`, the pane shows it above the list: "Goal" in bold beside a target, then the goal in regular text. A long goal stops after 3 lines with "…", so the steps stay in view. `/goal clear` removes it. A goal that Claude proposes and you accept shows the same way.
 
 ## Tools and commands this mod answers
 

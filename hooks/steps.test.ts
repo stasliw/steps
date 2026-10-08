@@ -396,6 +396,54 @@ test('a ProposeGoal the person turns down sets no goal', async ($, on) => {
   await expectNoGoal(ui)
 })
 
+// A long goal pushed the steps out of view. It stops after 3 lines at the pane's
+// width, cut at a word, with an ellipsis.
+for (const surface of ['terminal', 'desktop'] as const) {
+  test(`a long goal stops after 3 lines (${surface})`, async ($, on) => {
+    answerGoal(on)
+    await runGoal($, 'make sure all the tests pass and no regressions in the whole app today')
+    const ui = await $.ui.mount({
+      plugin: 'steps',
+      surface,
+      component: 'Pane',
+      requestId: 'steps',
+      props: { title: 'Steps', isFocused: false, bodyColumns: 20, placement: 'dock', scroll: { offset: 0, bodyRows: 20 }, view: {} },
+    })
+
+    // At 20 columns: "Make sure all the" / "tests pass and no" / "regressions in the…"
+    await expectGoal(ui, 'Make sure all the tests pass and no regressions in the…', surface === 'terminal' ? '◎ Goal' : 'Goal')
+  })
+}
+
+test('a goal that fits in 3 lines is not cut', async ($, on) => {
+  answerGoal(on)
+  await runGoal($, 'make sure all the tests pass and no regressions')
+  const ui = await $.ui.mount({
+    plugin: 'steps',
+    surface: 'terminal',
+    component: 'Pane',
+    requestId: 'steps',
+    props: { title: 'Steps', isFocused: false, bodyColumns: 20, placement: 'dock', scroll: { offset: 0, bodyRows: 20 }, view: {} },
+  })
+
+  // Exactly 3 lines at 20 columns: nothing cut, no ellipsis.
+  await expectGoal(ui, 'Make sure all the tests pass and no regressions', '◎ Goal')
+})
+
+test('one word longer than 3 lines is cut inside the word', async ($, on) => {
+  answerGoal(on)
+  await runGoal($, 'x'.repeat(100))
+  const ui = await $.ui.mount({
+    plugin: 'steps',
+    surface: 'terminal',
+    component: 'Pane',
+    requestId: 'steps',
+    props: { title: 'Steps', isFocused: false, bodyColumns: 20, placement: 'dock', scroll: { offset: 0, bodyRows: 20 }, view: {} },
+  })
+
+  await expectGoal(ui, `X${'x'.repeat(58)}…`, '◎ Goal')
+})
+
 function mountDesktopPane($: Parameters<Parameters<typeof test>[1]>[0]) {
   return $.ui.mount({
     plugin: 'steps',
