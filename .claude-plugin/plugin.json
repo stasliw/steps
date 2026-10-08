@@ -1,7 +1,7 @@
 {
   "name": "steps",
   "displayName": "Steps",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A pane beside the conversation that shows the steps Claude plans and keeps them current as it works",
   "author": { "name": "stasliw" },
   "license": "MIT",

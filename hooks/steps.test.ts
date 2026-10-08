@@ -1,4 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
+import type { On } from 'claude-code'
+import type { Engine } from 'claude-code/testing'
 
 const TOOL = 'mcp__steps__set_steps'
 
@@ -291,6 +293,107 @@ test('the doing icon is a turning circle, not spokes', async ($, on) => {
 
   expect(source).toContain('<circle')
   expect(source).not.toContain('<line')
+})
+
+// The goal set with /goal shows above the list: a target symbol and "Goal" in bold,
+// then the goal on its own line in regular weight, with its first letter raised.
+type Found = { props: Record<string, unknown>; text: string }
+type Pane = { find: (query: { type?: string; text?: string | RegExp }) => Promise<Found | undefined> }
+
+// A string query matches by inclusion, so "Goal" alone would also find "Goal: Ship it".
+const exactly = (s: string) => new RegExp(`^${s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`)
+
+async function expectGoal(ui: Pane, text: string, label = 'Goal') {
+  expect((await ui.find({ type: 'Text', text: exactly(label) }))?.props.bold).toBe(true)
+  const shown = await ui.find({ type: 'Text', text: exactly(text) })
+  expect(shown).toBeDefined()
+  expect(shown?.props.bold).not.toBe(true)
+}
+
+async function expectNoGoal(ui: Pane) {
+  expect(await ui.find({ type: 'Text', text: /^(◎ )?Goal$/ })).toBeUndefined()
+}
+
+function answerGoal(on: On) {
+  on('command.run', { command: 'goal' }, () => ({ text: 'Goal set.' }))
+  on('ui.open', { id: 'steps' }, () => ({ value: { isPlaced: true as const } }))
+}
+
+function runGoal($: Engine, args: string) {
+  return $.command.run({
+    command: 'goal',
+    args,
+    origin: { kind: 'composer' },
+    presentation: { isFullscreen: false, columns: 80 },
+  })
+}
+
+for (const surface of ['terminal', 'desktop'] as const) {
+  test(`/goal shows as the title above the steps (${surface})`, async ($, on) => {
+    answerGoal(on)
+    await runGoal($, 'make sure all the tests pass and no regressions')
+    await $.tool.call({ tool: TOOL, steps: [{ title: 'Run tests', status: 'doing' }] })
+    const ui = await $.ui.mount({
+      plugin: 'steps',
+      surface,
+      component: 'Pane',
+      requestId: 'steps',
+      props: { title: 'Steps', isFocused: false, bodyColumns: 40, placement: 'dock', scroll: { offset: 0, bodyRows: 20 }, view: {} },
+    })
+
+    // The terminal has no icons, so its label carries the symbol as text.
+    await expectGoal(ui, 'Make sure all the tests pass and no regressions', surface === 'terminal' ? '◎ Goal' : 'Goal')
+    expect(await ui.find({ text: 'Run tests' })).toBeDefined()
+  })
+}
+
+test('the goal label carries a target icon (desktop)', async ($, on) => {
+  answerGoal(on)
+  await runGoal($, 'ship it')
+  const ui = await mountDesktopPane($)
+
+  const icons = await ui.findAll({ type: 'Svg' })
+  expect(icons.map(i => i.props.alt)).toContain('goal')
+})
+
+test('the goal shows before any step is set', async ($, on) => {
+  answerGoal(on)
+  await runGoal($, 'ship it')
+  const ui = await mountDesktopPane($)
+
+  await expectGoal(ui, 'Ship it')
+  expect(await ui.find({ text: 'No steps yet.' })).toBeDefined()
+})
+
+test('/goal clear takes the goal away, and bare /goal keeps it', async ($, on) => {
+  answerGoal(on)
+  await runGoal($, 'ship it')
+  const ui = await mountDesktopPane($)
+
+  await runGoal($, '')
+  await expectGoal(ui, 'Ship it')
+
+  await runGoal($, 'clear')
+  await expectNoGoal(ui)
+  expect(await ui.find({ text: 'Ship it' })).toBeUndefined()
+})
+
+test('a goal Claude sets with ProposeGoal shows too', async ($, on) => {
+  on('ui.open', { id: 'steps' }, () => ({ value: { isPlaced: true as const } }))
+  on('tool.call', { tool: 'ProposeGoal' }, (_$, e) => ({ result: { condition: e.condition, askUser: false } }) as never)
+  await $.tool.call({ tool: 'ProposeGoal', condition: 'all tests in test/auth pass', ask_user: false } as never)
+  const ui = await mountDesktopPane($)
+
+  await expectGoal(ui, 'All tests in test/auth pass')
+})
+
+test('a ProposeGoal the person turns down sets no goal', async ($, on) => {
+  on('ui.open', { id: 'steps' }, () => ({ value: { isPlaced: true as const } }))
+  on('tool.call', { tool: 'ProposeGoal' }, () => ({ deny: 'The user declined the goal.' }))
+  await $.tool.call({ tool: 'ProposeGoal', condition: 'all tests pass' } as never)
+  const ui = await mountDesktopPane($)
+
+  await expectNoGoal(ui)
 })
 
 function mountDesktopPane($: Parameters<Parameters<typeof test>[1]>[0]) {

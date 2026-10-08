@@ -51,6 +51,12 @@ let steps: Step[] = []
 let callsSinceUpdate = 0
 let hasListThisRequest = false
 let hasNudgedForPlan = false
+// The goal from /goal or Claude's ProposeGoal, shown above the list.
+let goal: string | undefined
+
+function goalText(text: string): string {
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`
+}
 
 function nudgeFor(list: Step[]): string | undefined {
   const open = list.filter(s => s.status !== 'done')
@@ -180,6 +186,31 @@ export const register: Register = on => {
     return { result: `Steps updated: ${done}/${parsed.length} done.` }
   })
 
+  // The engine runs /goal; the mod only reads what was typed. Bare /goal shows the
+  // goal and changes nothing, and /goal clear ends it.
+  on('command.run', { command: 'goal' }, async ($, e, next) => {
+    const out = await next(e)
+    const args = e.args.trim()
+    if (args === '') return out
+    goal = args === 'clear' ? undefined : args
+    $.ui.invalidate('ui.render')
+
+    return out
+  })
+
+  // Claude can set a goal too. A goal the person turns down never shows.
+  on('tool.call', { tool: 'ProposeGoal' }, async ($, e, next) => {
+    const out = await next(e)
+    if (out.deny !== undefined || out.isError) return out
+    const condition = typeof e.condition === 'string' ? e.condition.trim() : ''
+    if (condition) {
+      goal = condition
+      $.ui.invalidate('ui.render')
+    }
+
+    return out
+  })
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const list = steps
     const done = list.filter(s => s.status === 'done').length
@@ -187,10 +218,30 @@ export const register: Register = on => {
     // Desktop: icons carry the state, text stays in the theme's own color.
     if (e.surface === 'desktop') {
       const { Box, Text, Svg } = $.ui.resolve(e)
-      if (list.length === 0) return <Text dimColor>No steps yet.</Text>
+      // "Goal" in bold beside its symbol, then the goal itself in regular weight.
+      const title = goal ? (
+        <Box flexDirection="column">
+          <Box flexDirection="row" alignItems="center" gap={1}>
+            <Svg source={GOAL_ICON} alt="goal" width={16} height={16} />
+            <Text bold>Goal</Text>
+          </Box>
+          <Text wrap="wrap">{goalText(goal)}</Text>
+        </Box>
+      ) : null
+      if (list.length === 0) {
+        return title ? (
+          <Box flexDirection="column" gap={1}>
+            {title}
+            <Text dimColor>No steps yet.</Text>
+          </Box>
+        ) : (
+          <Text dimColor>No steps yet.</Text>
+        )
+      }
 
       return (
         <Box flexDirection="column" gap={1}>
+          {title}
           <Box flexDirection="column" gap={1}>
             {list.map(step => (
               <Box flexDirection="row" alignItems="center" gap={1}>
@@ -206,9 +257,11 @@ export const register: Register = on => {
               </Box>
             ))}
           </Box>
-          <Text dimColor>
-            {done} of {list.length} done
-          </Text>
+          <Box flexDirection="row" justifyContent="flex-end">
+            <Text dimColor>
+              {done} of {list.length} done
+            </Text>
+          </Box>
         </Box>
       )
     }
@@ -218,6 +271,8 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column">
+        {goal ? <Text bold>{`${GOAL_MARK} Goal`}</Text> : null}
+        {goal ? <Text>{goalText(goal)}</Text> : null}
         {list.map(step => (
           <Text bold={step.status === 'doing'} dimColor={step.status === 'done'} strikethrough={step.status === 'done'}>
             {step.status === 'done' ? '✓' : step.status === 'doing' ? '›' : '○'} {step.title}
@@ -247,6 +302,15 @@ const SPINNER = svg(
     '<circle class="gray" cx="8" cy="8" r="6.5" style="fill:none" stroke-width="1.5" opacity="0.35"/>' +
     '<path class="ink spin" d="M8 1.5A6.5 6.5 0 0 1 14.5 8" style="fill:none" stroke-width="1.5" stroke-linecap="round"/>',
 )
+
+// The goal's symbol: a target. GOAL_MARK is the terminal's text version of it.
+const GOAL_ICON = svg(
+  '0 0 16 16',
+  '<circle class="ink" cx="8" cy="8" r="6.5" style="fill:none" stroke-width="1.5"/>' +
+    '<circle class="ink" cx="8" cy="8" r="3.5" style="fill:none" stroke-width="1.5"/>' +
+    '<circle class="ink" cx="8" cy="8" r="1.25" style="stroke:none"/>',
+)
+const GOAL_MARK = '◎'
 
 const ICONS: Record<StepStatus, string> = {
   todo: svg('0 0 16 16', '<circle class="gray" cx="8" cy="8" r="6.5" style="fill:none" stroke-width="1.5"/>'),
